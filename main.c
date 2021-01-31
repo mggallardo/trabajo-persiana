@@ -57,9 +57,6 @@ TIM_HandleTypeDef htim3;
 volatile int finTemp=1;
 int luminosidad;
 int poten;
-volatile int subir=0;
-volatile int bajar=0;
-volatile int manual=0;     //manual=1 -> Persiana automatica (en funcion de luminosidad)
 volatile int controlPot=0;
 
 /* USER CODE END PV */
@@ -72,6 +69,11 @@ static void MX_TIM1_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_ADC2_Init(void);
 /* USER CODE BEGIN PFP */
+void estado0();
+void estado1();
+void estado2();
+void estado3();
+void estado4();
 void subiendo();
 void bajando();
 void subidof();
@@ -97,52 +99,23 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)		//gestion de las interrupciones
 {
-	/*if (GPIO_Pin & GPIO_PIN_0)		//selecciono el boton de usuario BOTON AZUL (la persiana baja)
-	{
-		if (!subir)
-		{
-		  bajar  = 1;
-		  manual = 1;
-		  //controlPot=0;
-		}
-	}
-	else if(GPIO_Pin & GPIO_PIN_2)		//gestiono el BOTON EXTERNO (led rojo) (la persiana sube)
-	{
-		if (!bajar)
-		{
-		  subir  = 1;
-		  manual = 1;
-		  //controlPot=0;
-		}
-	}
-	else if(GPIO_Pin & GPIO_PIN_1)		//gestiono el boton NEGRO (reset)
-  {
-		if (!bajar && !subir)
-		{
-		  bajar  = 0;
-		  subir  = 0;
-		  manual = 0;
-		  //controlPot=0;
-		}
-	}*/
+
     if (GPIO_Pin == GPIO_PIN_2)       //gestiono el boton para activar el potenciometro
 	{
-    	if(debouncer( controlPot,  GPIO_Pin,  GPIO_PIN_2)){
-		controlPot=!controlPot;
-		//manual=0;
-    	}
+		controlPot=1;
+	 //debouncer( controlPot,  GPIO_Pin,  GPIO_PIN_2);
+
+
+    	//}
 
 	}else if(GPIO_Pin == GPIO_PIN_1)		//gestiono el boton NEGRO (reset)
 	  {
-			//if (!bajar && !subir)
-			//{
-			 // bajar  = 0;
-			  //subir  = 0;
-			 // manual = 0;
-			  controlPot=0;
-			}
+		controlPot=0;
+	  }
 }
+void estado0(){
 
+}
 
 void subiendo(){
 	HAL_GPIO_WritePin(GPIOD,GPIO_PIN_15, GPIO_PIN_RESET);
@@ -162,7 +135,7 @@ void bajando(){
 	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_SET);
 	HAL_Delay(500);
 	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_SET);
-	HAL_Delay(600);
+	HAL_Delay(500);
 }
 
 void bajadof(){
@@ -178,7 +151,6 @@ void subir_persiana()
 		__HAL_TIM_SetCounter(&htim1, 0);
 	    while (__HAL_TIM_GET_COUNTER(&htim1) < 2500);     // Se espera para apagar el ultimo Led
 		subidof();                                      //Persiana subida completamente
-		subir = 0;
 
 }
 
@@ -192,7 +164,6 @@ void bajar_persiana()
 	    __HAL_TIM_SetCounter(&htim1, 0);
 		while (__HAL_TIM_GET_COUNTER(&htim1) < 2500);  // Se espera para encender el ultimo Led
 		bajadof();                                     // Persiana bajada completamente
-		bajar = 0;
 
 }
 void InitializeTimer()
@@ -264,6 +235,7 @@ int main(void)
   MX_ADC2_Init();
   /* USER CODE BEGIN 2 */
   InitializeTimer();
+  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
 
   /* USER CODE END 2 */
 
@@ -311,6 +283,11 @@ int main(void)
 	  			       poten=HAL_ADC_GetValue(&hadc2);
 	  		       HAL_ADC_Stop(&hadc2);
 
+	  		       float a=80+poten*1.17;
+
+	            	__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, a);
+
+
 	  		       //Encendido Leds en funcion de valor del potenciometro
 
 	            if (poten < UMBRAL_POT_0){
@@ -326,13 +303,18 @@ int main(void)
 	            	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_RESET);
 	            	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_RESET);
 	        	    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_SET);
+	        	//	__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 250);	//250   llega a 380 (y hace los 180 grados)
+
 	            }
 	            if (poten > UMBRAL_POT_1 && poten < UMBRAL_POT_2){
 
 	            	HAL_GPIO_WritePin(GPIOD,GPIO_PIN_15, GPIO_PIN_RESET);
 	            	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_RESET);
 	            	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_SET);
-	        	    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_SET);
+	            	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_SET);
+	            	//__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 80);	//250   llega a 380 (y hace los 180 grados)
+
+
 	        	}
 	            if (poten > UMBRAL_POT_2 && poten < UMBRAL_POT_3){
 
@@ -593,14 +575,15 @@ static void MX_TIM3_Init(void)
 
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
 
   /* USER CODE BEGIN TIM3_Init 1 */
 
   /* USER CODE END TIM3_Init 1 */
   htim3.Instance = TIM3;
-  htim3.Init.Prescaler = 72-1;
+  htim3.Init.Prescaler = 160;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 20000;
+  htim3.Init.Period = 2000;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
@@ -612,15 +595,28 @@ static void MX_TIM3_Init(void)
   {
     Error_Handler();
   }
+  if (HAL_TIM_PWM_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
   sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
   sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
   if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
   {
     Error_Handler();
   }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
   /* USER CODE BEGIN TIM3_Init 2 */
 
   /* USER CODE END TIM3_Init 2 */
+  HAL_TIM_MspPostInit(&htim3);
 
 }
 
@@ -637,6 +633,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOE_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
+  __HAL_RCC_GPIOC_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12|GPIO_PIN_13|GPIO_PIN_14|GPIO_PIN_15, GPIO_PIN_RESET);
