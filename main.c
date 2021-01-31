@@ -69,15 +69,7 @@ static void MX_TIM1_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_ADC2_Init(void);
 /* USER CODE BEGIN PFP */
-void estado0();
-void estado1();
-void estado2();
-void estado3();
-void estado4();
-void subiendo();
-void bajando();
-void subidof();
-void bajadof();
+
 void subir_persiana();
 void bajar_persiana();
 void InitializeTimer();
@@ -103,69 +95,45 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)		//gestion de las interrupciones
     if (GPIO_Pin == GPIO_PIN_2)       //gestiono el boton para activar el potenciometro
 	{
 		controlPot=1;
-	 //debouncer( controlPot,  GPIO_Pin,  GPIO_PIN_2);
-
-
-    	//}
 
 	}else if(GPIO_Pin == GPIO_PIN_1)		//gestiono el boton NEGRO (reset)
 	  {
 		controlPot=0;
 	  }
 }
-void estado0(){
 
-}
 
-void subiendo(){
+void subir_persiana(){
 	HAL_GPIO_WritePin(GPIOD,GPIO_PIN_15, GPIO_PIN_RESET);
 	HAL_Delay(500);
 	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_RESET);
 	HAL_Delay(500);
 	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_RESET);
 	HAL_Delay(500);
+
+	// Se apagan los LEDs temporizado
+	__HAL_TIM_SetCounter(&htim1, 0);
+    while (__HAL_TIM_GET_COUNTER(&htim1) < 2500);             // Se espera para apagar el ultimo Led
+	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_RESET);    //Persiana subida (leds apagados)
+    HAL_Delay(500);
 }
-void subidof(){
-	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_RESET);   //Persiana subida (leds apagados)
-	HAL_Delay(500);
-}
-void bajando(){
+
+void bajar_persiana(){
 	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_SET);
 	HAL_Delay(500);
 	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_SET);
 	HAL_Delay(500);
 	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_SET);
 	HAL_Delay(500);
-}
 
-void bajadof(){
-  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_SET);      //Persiana bajada (leds encendidos)
+	__HAL_TIM_SetCounter(&htim1, 0);
+    while (__HAL_TIM_GET_COUNTER(&htim1) < 2500);            // Se espera para encender el ultimo Led
+	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_SET);     //Persiana bajada (leds encendidos)
 	HAL_Delay(500);
-}
-void subir_persiana()
-{
-	//Los leds se apagan rapidamente:
-	 subiendo();
-
-		// Se apagan los LEDs temporizado
-		__HAL_TIM_SetCounter(&htim1, 0);
-	    while (__HAL_TIM_GET_COUNTER(&htim1) < 2500);     // Se espera para apagar el ultimo Led
-		subidof();                                      //Persiana subida completamente
 
 }
 
-void bajar_persiana()
-{
 
-	// Se apagan los LEDS rapidamente
-		bajando();
-
-		// Apagar LED temporizados
-	    __HAL_TIM_SetCounter(&htim1, 0);
-		while (__HAL_TIM_GET_COUNTER(&htim1) < 2500);  // Se espera para encender el ultimo Led
-		bajadof();                                     // Persiana bajada completamente
-
-}
 void InitializeTimer()
 {
 	HAL_TIM_Base_Init(&htim1);
@@ -173,32 +141,7 @@ void InitializeTimer()
 
 }
 
-int debouncer(volatile int* button_int, GPIO_TypeDef* GPIO_port, uint16_t GPIO_number){
-	static uint8_t button_count=0;
-	static int counter=0;
 
-	if(*button_int==1){
-		if(button_count==0){
-			counter=HAL_GetTick();
-			button_count++;
-		}
-		if(HAL_GetTick()-counter<=5){
-			counter=HAL_GetTick();
-			if(HAL_GPIO_ReadPin(GPIO_port, GPIO_number)!=1){ // = 	0
-				button_count=1;
-			}
-			else{
-				button_count++;
-			}
-			if(button_count==2){  //estabilizada en 1
-				button_count=0;
-				*button_int=0;
-				return 1;
-			}
-		}
-	}
-	return 0;
-}
 /* USER CODE END 0 */
 
 /**
@@ -254,86 +197,72 @@ int main(void)
 	  				luminosidad=HAL_ADC_GetValue(&hadc1);
 	  			HAL_ADC_Stop(&hadc1);
 
-	  		if (luminosidad > UMBRAL_LUMINOSIDAD)
-	  		{
-	  			subir_persiana();
+				if (luminosidad > UMBRAL_LUMINOSIDAD)
+				{
+					subir_persiana();
+				}else
+				{
+					 bajar_persiana();
+				}
+
 	  		}else
-	  		{
-	  			 bajar_persiana();
-	  		}
-	  		}
-	  		/*else // Botones de subir y bajar manualmente la persiana
-	  		 {
-	  			  if (subir)
-	  			   subir_persiana();
-
-	  			 if (bajar)
-	  			 bajar_persiana();*/
-
-
-
-	  		//}else  //Manual
-	  		//{
-	  		else
 	  			{
 
                   // Muestreo potenciometro
+
 	  		       HAL_ADC_Start(&hadc2);
 	  		       if (HAL_ADC_PollForConversion(&hadc2, 1000) == HAL_OK)
 	  			       poten=HAL_ADC_GetValue(&hadc2);
 	  		       HAL_ADC_Stop(&hadc2);
 
-	  		       float a=80+poten*1.17;
+	  		       float a= 80 + poten*1.17;
 
 	            	__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, a);
 
 
-	  		       //Encendido Leds en funcion de valor del potenciometro
+	  		       //Encendido de Leds en función de valor del potenciometro
 
-	            if (poten < UMBRAL_POT_0){
+					if (poten < UMBRAL_POT_0){
 
-	            	HAL_GPIO_WritePin(GPIOD,GPIO_PIN_15, GPIO_PIN_RESET);
-	            	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_RESET);
-	            	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_RESET);
-	            	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_RESET);
-	  		    }
-	            if (poten > UMBRAL_POT_0 && poten < UMBRAL_POT_1){
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_RESET);
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_RESET);
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_RESET);
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_RESET);
+					}
+					if (poten > UMBRAL_POT_0 && poten < UMBRAL_POT_1){
 
-	            	HAL_GPIO_WritePin(GPIOD,GPIO_PIN_15, GPIO_PIN_RESET);
-	            	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_RESET);
-	            	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_RESET);
-	        	    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_SET);
-	        	//	__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 250);	//250   llega a 380 (y hace los 180 grados)
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_RESET);
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_RESET);
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_RESET);
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_SET);
 
-	            }
-	            if (poten > UMBRAL_POT_1 && poten < UMBRAL_POT_2){
+					}
+					if (poten > UMBRAL_POT_1 && poten < UMBRAL_POT_2){
 
-	            	HAL_GPIO_WritePin(GPIOD,GPIO_PIN_15, GPIO_PIN_RESET);
-	            	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_RESET);
-	            	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_SET);
-	            	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_SET);
-	            	//__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 80);	//250   llega a 380 (y hace los 180 grados)
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_RESET);
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_RESET);
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_SET);
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_SET);
 
+					}
+					if (poten > UMBRAL_POT_2 && poten < UMBRAL_POT_3){
 
-	        	}
-	            if (poten > UMBRAL_POT_2 && poten < UMBRAL_POT_3){
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_RESET);
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_SET);
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_SET);
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_SET);
+					}
+					if (poten > UMBRAL_POT_3){
 
-	            	HAL_GPIO_WritePin(GPIOD,GPIO_PIN_15, GPIO_PIN_RESET);
-	            	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_SET);
-	            	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_SET);
-	        	    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_SET);
-	            }
-	            if (poten > UMBRAL_POT_3){
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_SET);
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_SET);
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_SET);
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_SET);
+					}
 
-	            	HAL_GPIO_WritePin(GPIOD,GPIO_PIN_15, GPIO_PIN_SET);
-	            	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_SET);
-	            	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_SET);
-	        	    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_SET);
-	            }
+				 }
 
-	  		 }
-
-	  	}
+			}
 
 
     /* USER CODE END WHILE */
