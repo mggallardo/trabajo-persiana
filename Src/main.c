@@ -33,7 +33,12 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define UMBRAL_LUMINOSIDAD (900)
+#define UMBRAL_LUMINOSIDAD (100)
+#define UMBRAL_POT_0 (50)
+#define UMBRAL_POT_1 (100)
+#define UMBRAL_POT_2 (150)
+#define UMBRAL_POT_3 (200)
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -43,6 +48,7 @@
 
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc1;
+ADC_HandleTypeDef hadc2;
 
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim3;
@@ -50,9 +56,8 @@ TIM_HandleTypeDef htim3;
 /* USER CODE BEGIN PV */
 volatile int finTemp=1;
 int luminosidad;
-volatile int subir=0;
-volatile int bajar=0;
-volatile int manual=0;     //manual=1 -> Persiana automatica (en funcion de luminosidad)
+int poten;
+volatile int controlPot=0;
 
 /* USER CODE END PV */
 
@@ -62,16 +67,13 @@ static void MX_GPIO_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_TIM3_Init(void);
+static void MX_ADC2_Init(void);
 /* USER CODE BEGIN PFP */
-void subiendo();
-void bajando();
-void subidof();
-void bajadof();
+
 void subir_persiana();
 void bajar_persiana();
 void InitializeTimer();
-void servo_bajar();
-void servo_subir();
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -83,139 +85,77 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   /* NOTE : This function Should not be modified, when the callback is needed,
             the __HAL_TIM_PeriodElapsedCallback could be implemented in the user file
    */
-	//HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_12);
 	finTemp=1;
 }
 
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)		//gestion de las interrupciones
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)	   //gestión de las interrupciones
 {
-	if (GPIO_Pin & GPIO_PIN_0)		//selecciono el boton de usuario BOTON AZUL
+	if (GPIO_Pin == GPIO_PIN_0)                    //gestión del boton de usuario para volver a automático.
 	{
-		if (!subir)
-		{
-		  bajar  = 1;
-		  manual = 1;
-		}
+		controlPot=0;
 	}
-	else if(GPIO_Pin & GPIO_PIN_2)		//gestiono el boton externo BOTON PROTO
+
+    if (GPIO_Pin == GPIO_PIN_2)                    //gestión del boton externo para activar el potenciómetro.
 	{
-		if (!bajar)
-		{
-		  subir  = 1;
-		  manual = 1;
-		}
-	}
-	else if(GPIO_Pin & GPIO_PIN_1)		//gestiono el boton externo BOTON NEGRO
-  {
-		if (!bajar && !subir)
-		{
-		  bajar  = 0;
-		  subir  = 0;
-		  manual = 0;
-		}
-	}
+		controlPot=1;
+
+	}else if(GPIO_Pin == GPIO_PIN_1)		       //gestión del boton NEGRO (reset)
+	  {
+		controlPot=0;
+	  }
 }
 
 
+void subir_persiana(){
 
+ 	__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 80 );       //Control servomotor para subir persiana.
 
-void subiendo(){
 	HAL_GPIO_WritePin(GPIOD,GPIO_PIN_15, GPIO_PIN_RESET);
-	//htim3.Instance->CCR1=500;
-	HAL_Delay(500);
+	HAL_Delay(250);
 	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_RESET);
-	//htim3.Instance->CCR1=1500;
-	HAL_Delay(500);
+	HAL_Delay(250);
 	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_RESET);
-	//htim3.Instance->CCR1=1500;
-	HAL_Delay(500);
+	HAL_Delay(250);
+
+	// Se apaga el ultimo led LED temporizado
+	__HAL_TIM_SetCounter(&htim1, 0);
+    while (__HAL_TIM_GET_COUNTER(&htim1) < 1000);             // Se espera para apagar el ultimo Led
+	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_RESET);    //Persiana subida (leds apagados)
+    HAL_Delay(250);
+
+
 }
-void subidof(){
-	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_RESET);   //Persiana subida (leds apagados)
-	//htim3.Instance->CCR1=2500;
-	HAL_Delay(500);
-}
-void bajando(){
+
+void bajar_persiana(){
+
+ 	__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 380 );        //Control servomotor para bajar persiana.
+
 	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_SET);
-	HAL_Delay(500);
+	HAL_Delay(250);
 	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_SET);
-	HAL_Delay(500);
+	HAL_Delay(250);
 	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_SET);
-	HAL_Delay(600);
-}
+	HAL_Delay(250);
 
-void bajadof(){
-  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_SET);      //Persiana bajada (leds encendidos)
-	HAL_Delay(500);
-}
-void subir_persiana()
-{
-	//Los leds se apagan rapidamente:
-	 subiendo();
-
-		// Se apagan los LEDs temporizado
-		__HAL_TIM_SetCounter(&htim1, 0);
-	  while (__HAL_TIM_GET_COUNTER(&htim1) < 2500);     // Esperarr
-		subidof();                                      //Ha subido la persiana (apaga el ultimo LED)
-		subir = 0;
+	//Se enciende el último led con temporización.
+	__HAL_TIM_SetCounter(&htim1, 0);
+    while (__HAL_TIM_GET_COUNTER(&htim1) < 1000);            // Se espera para encender el ultimo Led
+	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_SET);     //Persiana bajada (leds encendidos)
+	HAL_Delay(250);
 
 }
-
-void bajar_persiana()
+void persiana_manual()
 {
 
-	// Se apagan los LEDS rapidamente
-		bajando();
-
-		// Apagar LED temporizados
-	    __HAL_TIM_SetCounter(&htim1, 0);
-		while (__HAL_TIM_GET_COUNTER(&htim1) < 2500);  // Esperar
-		bajadof();                                     // Apagar último LED
-		bajar = 0;
-
 }
-void InitializeTimer()
+
+void InitializeTimer()                  // Inicia el temporizador htim1
 {
 	HAL_TIM_Base_Init(&htim1);
 	HAL_TIM_Base_Start(&htim1);
 
 }
-void servo_subir()
-{
-	/*htim3.Instance->CCR1=500;  //0.5ms
-	HAL_Delay(2000);
-	htim3.Instance->CCR1=1500;    //1.5ms
-	HAL_Delay(2000);
-	htim3.Instance->CCR1=2500;    //2.5ms
-	HAL_Delay(2000);*/
 
-	int i=100;
-   while (i<500)
-		  {
-			  htim3.Instance->CCR1=i;
-			//  i++;
-			//  HAL_Delay(100);
-		  }
-	  i++;
-   HAL_Delay(100);
-
-
-
-}
-void servo_bajar()
-{
-	int i=500;
-	   while (i>100)
-			  {
-				  htim3.Instance->CCR1=i;
-				 // i--;
-				// HAL_Delay(100);
-			  }
-	   i--;
-
-	   HAL_Delay(100);
-
-}
 
 /* USER CODE END 0 */
 
@@ -250,7 +190,9 @@ int main(void)
   MX_ADC1_Init();
   MX_TIM1_Init();
   MX_TIM3_Init();
+  MX_ADC2_Init();
   /* USER CODE BEGIN 2 */
+
   InitializeTimer();
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
 
@@ -263,7 +205,7 @@ int main(void)
 
 	  HAL_NVIC_DisableIRQ(EXTI0_IRQn);
 	  HAL_NVIC_EnableIRQ(EXTI0_IRQn);
-	  		if (!manual)  //Automatico
+	  		if (!controlPot )           //Se baja y se sube la persiana automaticamente en función de la luminosidad
 	  		{
 	  			// Muestrear luminosidad
 	  			HAL_ADC_Start(&hadc1);
@@ -271,43 +213,73 @@ int main(void)
 	  				luminosidad=HAL_ADC_GetValue(&hadc1);
 	  			HAL_ADC_Stop(&hadc1);
 
-	  			//HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
+				if (luminosidad > UMBRAL_LUMINOSIDAD)
+				{
+					subir_persiana();
+				}else
+				{
+					 bajar_persiana();
+				}
+
+	  		}else
+	  			{
+
+                  // Muestreo potenciómetro
+
+	  		       HAL_ADC_Start(&hadc2);
+	  		       if (HAL_ADC_PollForConversion(&hadc2, 1000) == HAL_OK)
+	  			       poten=HAL_ADC_GetValue(&hadc2);
+	  		       HAL_ADC_Stop(&hadc2);
+
+	  		       float a = 80 + poten*1.17;
+
+	            	__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, a);            // Servomotor en función del valor del potenciómetro
 
 
-
-	  		  // Determinar subir o bajar
-	        if (luminosidad > UMBRAL_LUMINOSIDAD)
-	  		  {
-	  			  subir_persiana();
-	  			 // servo_subir();
-	  			//  __HAL_TIM_SET_COMPARE (&htim3, TIM_CHANNEL_2, 250);
-	  			//  HAL_Delay(100);
-	  			 // __HAL_TIM_SET_COMPARE (&htim3, TIM_CHANNEL_2, 500);
-	  			 // HAL_Delay(100);
+	  		       //Encendido de Leds en función de valor del potenciometro
 
 
-	  		  }
-	  		  else
-	  		  {
-	    		  bajar_persiana();
-	    		 // servo_bajar();
-	  		  }
-	  		}
-	      else  //Manual
-	  	  {
-	  		  if (subir){
-	  			  subir_persiana();
-	  			 // servo_subir();
-	  		  }
-	  		  if (bajar){
-	  			  bajar_persiana();
-	  			 // servo_bajar();
-	  		  }
-	  		}
+					if (poten < UMBRAL_POT_0){
 
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_RESET);
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_RESET);
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_RESET);
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_RESET);
+					}
+					if (poten > UMBRAL_POT_0 && poten < UMBRAL_POT_1){
 
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_RESET);
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_RESET);
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_RESET);
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_SET);
 
+					}
+					if (poten > UMBRAL_POT_1 && poten < UMBRAL_POT_2){
 
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_RESET);
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_RESET);
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_SET);
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_SET);
+
+					}
+					if (poten > UMBRAL_POT_2 && poten < UMBRAL_POT_3){
+
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_RESET);
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_SET);
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_SET);
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_SET);
+					}
+					if (poten > UMBRAL_POT_3){
+
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_SET);
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_SET);
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_SET);
+						HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_SET);
+					}
+
+				 }
+
+			}
 
 
     /* USER CODE END WHILE */
@@ -381,7 +353,7 @@ static void MX_ADC1_Init(void)
   */
   hadc1.Instance = ADC1;
   hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV2;
-  hadc1.Init.Resolution = ADC_RESOLUTION_12B;
+  hadc1.Init.Resolution = ADC_RESOLUTION_8B;
   hadc1.Init.ScanConvMode = DISABLE;
   hadc1.Init.ContinuousConvMode = DISABLE;
   hadc1.Init.DiscontinuousConvMode = DISABLE;
@@ -407,6 +379,56 @@ static void MX_ADC1_Init(void)
   /* USER CODE BEGIN ADC1_Init 2 */
 
   /* USER CODE END ADC1_Init 2 */
+
+}
+
+/**
+  * @brief ADC2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_ADC2_Init(void)
+{
+
+  /* USER CODE BEGIN ADC2_Init 0 */
+
+  /* USER CODE END ADC2_Init 0 */
+
+  ADC_ChannelConfTypeDef sConfig = {0};
+
+  /* USER CODE BEGIN ADC2_Init 1 */
+
+  /* USER CODE END ADC2_Init 1 */
+  /** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion) 
+  */
+  hadc2.Instance = ADC2;
+  hadc2.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV2;
+  hadc2.Init.Resolution = ADC_RESOLUTION_8B;
+  hadc2.Init.ScanConvMode = DISABLE;
+  hadc2.Init.ContinuousConvMode = DISABLE;
+  hadc2.Init.DiscontinuousConvMode = DISABLE;
+  hadc2.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
+  hadc2.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+  hadc2.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+  hadc2.Init.NbrOfConversion = 1;
+  hadc2.Init.DMAContinuousRequests = DISABLE;
+  hadc2.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+  if (HAL_ADC_Init(&hadc2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time. 
+  */
+  sConfig.Channel = ADC_CHANNEL_7;
+  sConfig.Rank = 1;
+  sConfig.SamplingTime = ADC_SAMPLETIME_3CYCLES;
+  if (HAL_ADC_ConfigChannel(&hadc2, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN ADC2_Init 2 */
+
+  /* USER CODE END ADC2_Init 2 */
 
 }
 
@@ -505,9 +527,9 @@ static void MX_TIM3_Init(void)
 
   /* USER CODE END TIM3_Init 1 */
   htim3.Instance = TIM3;
-  htim3.Init.Prescaler = 72-1;
+  htim3.Init.Prescaler = 160;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 20000;
+  htim3.Init.Period = 2000;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
